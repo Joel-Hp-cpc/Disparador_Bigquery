@@ -14,55 +14,62 @@
 
 # [START eventarc_gcs_server]
 import os
-
-from flask import Flask, request
 import json
+from flask import Flask, request
 from google.cloud import bigquery
 
 app = Flask(__name__)
 
-
 # [END eventarc_gcs_server]
-
 
 # [START eventarc_gcs_handler]
 @app.route('/', methods=['POST'])
 def index():
-    # Gets the Payload data from the Audit Log
+    print('Llegó una solicitud POST')
+
+    # Obtiene el contenido JSON de la solicitud
     content = request.json
+
+    if not content:
+        print("Error: No se recibió un JSON válido")
+        return "Bad Request", 400  # Código 400 para solicitud incorrecta
+
     try:
-        print(content)
         ds = content['resource']['labels']['dataset_id']
         proj = content['resource']['labels']['project_id']
         tbl = content['protoPayload']['resourceName']
         rows = int(content['protoPayload']['metadata']['tableDataChange']['insertedRowsCount'])
+
         if ds == 'cloud_run_tmp' and tbl.endswith('tables/cloud_run_trigger') and rows > 0:
             query = create_agg()
-            return "table created", 200
-    except:
-        # if these fields are not in the JSON, ignore
-        pass
-    return "ok", 200
+            return "Table created", 200
 
+    except KeyError as e:
+        print(f"Error de clave en JSON: {e}")
+    except Exception as e:
+        print(f"Error inesperado: {e}")
+
+    return "ok", 200
 
 # [END eventarc_gcs_handler]
 
 def create_agg():
+    print('Llegó a la función create_agg')
     client = bigquery.Client()
     query = """
-CREATE OR REPLACE TABLE cloud_run_tmp.created_by_trigger AS
-SELECT 
-  name, SUM(number) AS n
-FROM cloud_run_tmp.cloud_run_trigger
-GROUP BY name
-ORDER BY n desc
-LIMIT 10
+    CREATE OR REPLACE TABLE cloud_run_tmp.created_by_trigger AS
+    SELECT 
+      name, SUM(number) AS n
+    FROM cloud_run_tmp.cloud_run_trigger
+    GROUP BY name
+    ORDER BY n DESC
+    LIMIT 10
     """
     client.query(query)
     return query
 
-
 # [START eventarc_gcs_server]
 if __name__ == "__main__":
+    print('Iniciando aplicación Flask...')
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 # [END eventarc_gcs_server]
